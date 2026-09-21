@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -106,6 +107,55 @@ def test_corrupt_zip_returns_empty_string():
         return httpx.Response(200, content=b"not a zip file")
 
     assert make_client(handler).attempt_log("acme/proj", 101, 1) == ""
+
+
+def test_stops_paginating_once_runs_are_older_than_the_cutoff():
+    """Logs expire long before runs leave the API, so old pages are dead weight."""
+    fresh = {
+        "workflow_runs": [
+            {
+                "id": 1,
+                "head_sha": "s1",
+                "run_attempt": 2,
+                "created_at": "2026-09-20T00:00:00Z",
+                "html_url": "https://example.test/1",
+            }
+        ]
+    }
+    stale = {
+        "workflow_runs": [
+            {
+                "id": 2,
+                "head_sha": "s2",
+                "run_attempt": 2,
+                "created_at": "2026-01-01T00:00:00Z",
+                "html_url": "https://example.test/2",
+            }
+        ]
+    }
+    pages_fetched = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params.get("page", "1")
+        pages_fetched.append(page)
+        return httpx.Response(200, json=fresh if page == "1" else stale)
+
+    runs = make_client(handler).failed_runs_with_reruns(
+        "acme/proj", max_age_days=30, now=datetime(2026, 9, 21, tzinfo=timezone.utc)
+    )
+
+    assert [run.run_id for run in runs] == [1]
+    assert pages_fetched == ["1", "2"]
+
+
+def test_runs_without_a_created_at_are_kept():
+    payload = {
+        "workflow_runs": [
+            {"id": 7, "head_sha": "s7", "run_attempt": 2, "html_url": "https://example.test/7"}
+        ]
+    }
+    runs = make_client(make_paging_handler(payload)).failed_runs_with_reruns("acme/proj")
+    assert [run.run_id for run in runs] == [7]
 
 
 def test_auth_error_is_not_swallowed():
