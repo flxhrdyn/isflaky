@@ -60,13 +60,19 @@ class GitHubClient:
         return reruns
 
     def attempt_log(self, repo: str, run_id: int, attempt: int) -> str:
-        response = self._client.get(
-            f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/logs"
-        )
+        try:
+            response = self._client.get(
+                f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/logs"
+            )
+        except (httpx.TransportError, httpx.HTTPError):
+            return ""
         if response.status_code in _EXPIRED:
             return ""
-        response.raise_for_status()
-        return _read_zip(response.content)
+        try:
+            response.raise_for_status()
+            return _read_zip(response.content)
+        except (httpx.HTTPError, zipfile.BadZipFile):
+            return ""
 
 
 def _read_zip(payload: bytes) -> str:

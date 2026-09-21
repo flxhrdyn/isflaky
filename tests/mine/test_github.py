@@ -94,6 +94,20 @@ def test_pagination_continues_until_an_empty_page():
     assert [run.run_id for run in runs] == [1, 2]
 
 
+def test_transport_error_returns_empty_string():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("peer closed connection")
+
+    assert make_client(handler).attempt_log("acme/proj", 101, 1) == ""
+
+
+def test_corrupt_zip_returns_empty_string():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not a zip file")
+
+    assert make_client(handler).attempt_log("acme/proj", 101, 1) == ""
+
+
 def test_auth_error_is_not_swallowed():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"message": "Bad credentials"})
