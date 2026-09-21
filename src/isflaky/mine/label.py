@@ -4,7 +4,11 @@ from isflaky.core.models import Label, LabeledFailure, Provenance
 from isflaky.mine.github import WorkflowRun
 from isflaky.parse.pytest_log import parse_pytest_log
 
-_RAN_TESTS = re.compile(r"short test summary info|\d+ (?:passed|failed)")
+# Match evidence that pytest actually ran in log_b.
+_RAN_TESTS = re.compile(
+    r"short test summary info|\d+\s+(?:passed|failed)|=+\s*(?:test session starts|FAILURES)\s*=+",
+    re.IGNORECASE,
+)
 
 
 def label_attempt_pair(

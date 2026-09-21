@@ -44,3 +44,15 @@ def test_log_without_failures_returns_empty_list():
 
 def test_log_without_pytest_output_returns_empty_list():
     assert parse_pytest_log("Error: runner lost connection\n") == []
+
+
+def test_strips_ansi_color_codes():
+    raw = (
+        "\x1b[36m\x1b[1m=========================== short test summary info ===========================\x1b[0m\n"
+        "\x1b[31mFAILED\x1b[0m tests/test_ui.py::\x1b[1mtest_render\x1b[0m - AssertionError: assert False\n"
+        "\x1b[31m= \x1b[31m1 failed\x1b[0m, \x1b[32m10 passed\x1b[0m in 1.20s =\n"
+    )
+    failures = parse_pytest_log(raw)
+    assert len(failures) == 1
+    assert failures[0].test_id == "tests/test_ui.py::test_render"
+    assert failures[0].error == "AssertionError: assert False"
