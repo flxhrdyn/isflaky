@@ -203,7 +203,7 @@ isflaky/
   engine/     Decision engine. The only place Jev is named.
     protocol.py  DecisionModel: decide(state, question_set) -> Answers
     jev.py       Jev implementation
-    llm.py       LLM baseline implementation
+    groq.py      Groq LLM baseline implementation
     heuristic.py regex and majority-class implementation, no network
     questions/   question sets as configuration, not code
       direct.yaml
@@ -290,7 +290,7 @@ dataset.jsonl
        heuristic  x  -
        jev        x  direct
        jev        x  atomic
-       llm        x  direct      (small n)
+       groq       x  direct      (small n)
   -> metrics
   -> report.md + results.json + plots (committed)
 ```
@@ -352,13 +352,13 @@ Baselines:
 
 - Majority class, free.
 - Keyword regex over terms like timeout, connection, reset, and flake, free.
-- A small LLM at n between 300 and 500, paid.
+- A small LLM at n between 300 and 500, paid. Groq is the provider, matching the rest of this workspace's projects; `llama-3.1-8b-instant` is the default baseline model and `llama-3.3-70b-versatile` the stronger comparison.
 
 The free baselines are not optional.
 If a regex reaches the same accuracy, the project's premise collapses, and that must be discovered here rather than by a reader.
 
 Estimated cost: roughly 2,000 failures at about 4,000 tokens of state is 8M input tokens, about $0.34 on Jev.
-The LLM baseline at 400 cases is roughly $0.25.
+The Groq baseline at 400 cases is well under $1 at current pricing, and Groq's throughput keeps the run to minutes rather than hours.
 Cost is not a constraint; time is.
 
 ## 13. Error handling
@@ -394,7 +394,7 @@ uv, Python 3.10 or later, hatchling.
 pip install isflaky           # parse + engine + gate + cli
 pip install isflaky[mine]     # + GitHub mining
 pip install isflaky[bench]    # + numpy, scipy, plots
-pip install isflaky[llm]      # + baseline clients
+pip install isflaky[llm]      # + groq baseline client
 ```
 
 MIT license.
