@@ -1,0 +1,15 @@
+2026-09-20T10:14:02.1Z ============================= test session starts ==============================
+2026-09-20T10:14:02.2Z collected 42 items
+2026-09-20T10:14:09.4Z
+2026-09-20T10:14:09.4Z =================================== FAILURES ===================================
+2026-09-20T10:14:09.4Z _________________________________ test_retry __________________________________
+2026-09-20T10:14:09.5Z
+2026-09-20T10:14:09.5Z     def test_retry():
+2026-09-20T10:14:09.5Z >       resp = client.get("/health")
+2026-09-20T10:14:09.5Z E       ConnectionResetError: [Errno 104] Connection reset by peer
+2026-09-20T10:14:09.6Z
+2026-09-20T10:14:09.6Z tests/test_api.py:31: ConnectionResetError
+2026-09-20T10:14:09.7Z =========================== short test summary info ============================
+2026-09-20T10:14:09.7Z FAILED tests/test_api.py::test_retry - ConnectionResetError: [Errno 104] Connection reset by peer
+2026-09-20T10:14:09.7Z FAILED tests/test_auth.py::test_expiry - AssertionError: assert 1758412800 < 1758412800
+2026-09-20T10:14:09.8Z ========================= 2 failed, 40 passed in 7.31s =========================
