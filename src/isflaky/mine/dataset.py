@@ -47,6 +47,25 @@ def read_dataset(path: Path) -> list[LabeledFailure]:
     return records
 
 
+def read_seen_runs(path: Path) -> dict[str, set[int]]:
+    """Run ids already downloaded, whether or not they produced a label."""
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {repo: set(run_ids) for repo, run_ids in raw.items()}
+
+
+def write_seen_runs(path: Path, seen: dict[str, set[int]]) -> None:
+    merged = read_seen_runs(path)
+    for repo, run_ids in seen.items():
+        merged.setdefault(repo, set()).update(run_ids)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({repo: sorted(run_ids) for repo, run_ids in merged.items()}),
+        encoding="utf-8",
+    )
+
+
 def _mine_pair(
     client: GitHubClient, repo: str, run: WorkflowRun, attempt: int
 ) -> list[LabeledFailure]:
@@ -58,11 +77,19 @@ def _mine_pair(
 
 
 def mine_repo(
-    client: GitHubClient, repo: str, skip_run_ids: frozenset[int] = frozenset()
+    client: GitHubClient,
+    repo: str,
+    skip_run_ids: frozenset[int] = frozenset(),
+    examined: set[int] | None = None,
 ) -> Iterator[LabeledFailure]:
     runs = [r for r in client.failed_runs_with_reruns(repo) if r.run_id not in skip_run_ids]
     pairs = [(run, attempt) for run in runs for attempt in range(1, run.attempts)]
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
-        futures = [pool.submit(_mine_pair, client, repo, run, attempt) for run, attempt in pairs]
+        futures = {
+            pool.submit(_mine_pair, client, repo, run, attempt): run.run_id
+            for run, attempt in pairs
+        }
         for future in as_completed(futures):
+            if examined is not None:
+                examined.add(futures[future])
             yield from future.result()

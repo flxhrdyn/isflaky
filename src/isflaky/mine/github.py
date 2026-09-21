@@ -39,7 +39,7 @@ class GitHubClient:
     def failed_runs_with_reruns(
         self,
         repo: str,
-        max_pages: int = 15,
+        max_pages: int = 5,
         max_age_days: int = _MAX_AGE_DAYS,
         now: datetime | None = None,
     ) -> list[WorkflowRun]:

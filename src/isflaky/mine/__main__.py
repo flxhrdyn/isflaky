@@ -5,7 +5,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from isflaky.mine.dataset import mine_repo, read_dataset, write_dataset
+from isflaky.mine.dataset import (
+    mine_repo,
+    read_dataset,
+    read_seen_runs,
+    write_dataset,
+    write_seen_runs,
+)
 from isflaky.mine.github import GitHubClient
 
 
@@ -23,16 +29,23 @@ def main() -> int:
         return 2
 
     existing = read_dataset(args.out) if args.out.exists() else []
+    seen_path = args.out.with_name("seen_runs.json")
+    seen = read_seen_runs(seen_path)
 
     client = GitHubClient(token=token)
     total = 0
     for repo in args.repos:
         skip = frozenset(
-            r.provenance.run_id for r in existing if r.provenance.repo == repo
+            {r.provenance.run_id for r in existing if r.provenance.repo == repo}
+            | seen.get(repo, set())
         )
-        written = write_dataset(mine_repo(client, repo, skip_run_ids=skip), args.out)
+        examined: set[int] = set()
+        written = write_dataset(
+            mine_repo(client, repo, skip_run_ids=skip, examined=examined), args.out
+        )
+        write_seen_runs(seen_path, {repo: examined})
         total += written
-        print(f"{repo}: {written} labeled failures ({len(skip)} runs already mined, skipped)")
+        print(f"{repo}: {written} labeled failures ({len(skip)} runs skipped, {len(examined)} examined)")
     print(f"total: {total} -> {args.out}")
     return 0
 

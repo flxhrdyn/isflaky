@@ -4,7 +4,13 @@ import zipfile
 import httpx
 
 from isflaky.core.models import Failure, Label, LabeledFailure, Provenance
-from isflaky.mine.dataset import mine_repo, read_dataset, write_dataset
+from isflaky.mine.dataset import (
+    mine_repo,
+    read_dataset,
+    read_seen_runs,
+    write_dataset,
+    write_seen_runs,
+)
 from isflaky.mine.github import GitHubClient
 
 
@@ -75,3 +81,43 @@ def test_mine_repo_skips_runs_already_in_skip_run_ids():
     records = list(mine_repo(client, "acme/proj", skip_run_ids=frozenset({101})))
 
     assert {r.provenance.run_id for r in records} == {202}
+
+
+def test_seen_runs_roundtrip(tmp_path):
+    path = tmp_path / "seen_runs.json"
+    write_seen_runs(path, {"acme/proj": {1, 2}})
+    assert read_seen_runs(path) == {"acme/proj": {1, 2}}
+
+
+def test_read_seen_runs_of_missing_file_is_empty(tmp_path):
+    assert read_seen_runs(tmp_path / "absent.json") == {}
+
+
+def test_write_seen_runs_merges_with_what_is_already_recorded(tmp_path):
+    path = tmp_path / "seen_runs.json"
+    write_seen_runs(path, {"acme/proj": {1}})
+    write_seen_runs(path, {"acme/proj": {2}, "other/repo": {9}})
+    assert read_seen_runs(path) == {"acme/proj": {1, 2}, "other/repo": {9}}
+
+
+def test_mine_repo_reports_every_run_it_examined():
+    """A run that yields no label still cost a download, so it must be recorded."""
+    runs_payload = {
+        "workflow_runs": [
+            {"id": 101, "head_sha": "aaa", "run_attempt": 2, "html_url": "https://x/101"},
+            {"id": 202, "head_sha": "bbb", "run_attempt": 2, "html_url": "https://x/202"},
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "actions/runs/" in request.url.path and "attempts/" in request.url.path:
+            return httpx.Response(404)
+        page = request.url.params.get("page", "1")
+        return httpx.Response(200, json=runs_payload if page == "1" else {"workflow_runs": []})
+
+    client = GitHubClient(token="fake", transport=httpx.MockTransport(handler))
+    examined: set[int] = set()
+    records = list(mine_repo(client, "acme/proj", examined=examined))
+
+    assert records == []
+    assert examined == {101, 202}
