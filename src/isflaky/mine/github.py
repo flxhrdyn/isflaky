@@ -5,8 +5,9 @@ from dataclasses import dataclass
 import httpx
 
 _API = "https://api.github.com"
-# Actions log retention defaults to 90 days; expired logs answer 410.
-_EXPIRED = 410
+# Actions log retention defaults to 90 days, but expired/missing logs answer
+# either 410 or 404 depending on how far past retention they are.
+_EXPIRED = {404, 410}
 
 
 @dataclass(frozen=True)
@@ -62,7 +63,7 @@ class GitHubClient:
         response = self._client.get(
             f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/logs"
         )
-        if response.status_code == _EXPIRED:
+        if response.status_code in _EXPIRED:
             return ""
         response.raise_for_status()
         return _read_zip(response.content)

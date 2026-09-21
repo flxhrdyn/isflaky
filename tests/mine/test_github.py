@@ -63,6 +63,13 @@ def test_expired_log_returns_empty_string():
     assert make_client(handler).attempt_log("acme/proj", 101, 1) == ""
 
 
+def test_missing_log_returns_empty_string():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    assert make_client(handler).attempt_log("acme/proj", 101, 1) == ""
+
+
 def test_pagination_continues_until_an_empty_page():
     page_one = {
         "workflow_runs": [
