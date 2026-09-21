@@ -31,23 +31,32 @@ class GitHubClient:
             follow_redirects=True,
         )
 
-    def failed_runs_with_reruns(self, repo: str) -> list[WorkflowRun]:
-        response = self._client.get(
-            f"/repos/{repo}/actions/runs",
-            params={"status": "failure", "per_page": 100},
-        )
-        response.raise_for_status()
-        return [
-            WorkflowRun(
-                run_id=run["id"],
-                head_sha=run["head_sha"],
-                attempts=run["run_attempt"],
-                url=run["html_url"],
-                repo=repo,
+    def failed_runs_with_reruns(self, repo: str, max_pages: int = 15) -> list[WorkflowRun]:
+        # status=failure would keep only runs whose LATEST attempt failed, which
+        # drops exactly the fail-then-pass reruns the flaky label depends on.
+        # List every run and filter on run_attempt instead.
+        reruns: list[WorkflowRun] = []
+        for page in range(1, max_pages + 1):
+            response = self._client.get(
+                f"/repos/{repo}/actions/runs",
+                params={"per_page": 100, "page": page},
             )
-            for run in response.json()["workflow_runs"]
-            if run["run_attempt"] > 1
-        ]
+            response.raise_for_status()
+            runs = response.json()["workflow_runs"]
+            if not runs:
+                break
+            reruns.extend(
+                WorkflowRun(
+                    run_id=run["id"],
+                    head_sha=run["head_sha"],
+                    attempts=run["run_attempt"],
+                    url=run["html_url"],
+                    repo=repo,
+                )
+                for run in runs
+                if run["run_attempt"] > 1
+            )
+        return reruns
 
     def attempt_log(self, repo: str, run_id: int, attempt: int) -> str:
         response = self._client.get(
