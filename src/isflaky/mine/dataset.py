@@ -1,11 +1,14 @@
 import json
 from collections.abc import Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
 
 from isflaky.core.models import Failure, Label, LabeledFailure, Provenance
-from isflaky.mine.github import GitHubClient
+from isflaky.mine.github import GitHubClient, WorkflowRun
 from isflaky.mine.label import label_attempt_pair
+
+_MAX_WORKERS = 8
 
 
 def write_dataset(records: Iterable[LabeledFailure], path: Path) -> int:
@@ -44,11 +47,22 @@ def read_dataset(path: Path) -> list[LabeledFailure]:
     return records
 
 
-def mine_repo(client: GitHubClient, repo: str) -> Iterator[LabeledFailure]:
-    for run in client.failed_runs_with_reruns(repo):
-        for attempt in range(1, run.attempts):
-            log_a = client.attempt_log(repo, run.run_id, attempt)
-            log_b = client.attempt_log(repo, run.run_id, attempt + 1)
-            if not log_a or not log_b:
-                continue
-            yield from label_attempt_pair(run, attempt, log_a, log_b)
+def _mine_pair(
+    client: GitHubClient, repo: str, run: WorkflowRun, attempt: int
+) -> list[LabeledFailure]:
+    log_a = client.attempt_log(repo, run.run_id, attempt)
+    log_b = client.attempt_log(repo, run.run_id, attempt + 1)
+    if not log_a or not log_b:
+        return []
+    return label_attempt_pair(run, attempt, log_a, log_b)
+
+
+def mine_repo(
+    client: GitHubClient, repo: str, skip_run_ids: frozenset[int] = frozenset()
+) -> Iterator[LabeledFailure]:
+    runs = [r for r in client.failed_runs_with_reruns(repo) if r.run_id not in skip_run_ids]
+    pairs = [(run, attempt) for run in runs for attempt in range(1, run.attempts)]
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+        futures = [pool.submit(_mine_pair, client, repo, run, attempt) for run, attempt in pairs]
+        for future in as_completed(futures):
+            yield from future.result()
