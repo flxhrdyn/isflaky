@@ -1,0 +1,57 @@
+# Observable signals, combined by the gate rather than by the model.
+# All questions run in parallel over one state read, so the last one costs
+# tokens and almost no additional time.
+name: atomic
+questions:
+  - name: network_error
+    kind: noul
+    prompt: >
+      The error mentions a network problem: a timeout, a refused or reset
+      connection, a DNS failure, or an unreachable host.
+
+  - name: timing_dependent
+    kind: noul
+    prompt: >
+      The failure depends on timing, sleeping, scheduling, or the order in
+      which operations completed.
+
+  - name: assertion_failure
+    kind: noul
+    prompt: >
+      The failure is a deterministic assertion mismatch: a value was compared
+      against an expected value and did not match.
+
+  - name: touches_test_code
+    kind: noul
+    prompt: >
+      The change under test modifies the module containing the failing test.
+
+  - name: resource_contention
+    kind: noul
+    prompt: >
+      The error mentions contention over a resource: a port already in use, a
+      lock, a file handle, a temporary directory, or exhausted memory.
+
+  - name: external_service
+    kind: noul
+    prompt: >
+      The failure involves an external service, a third-party API, or a
+      network dependency outside the test process.
+
+  - name: import_or_env
+    kind: noul
+    prompt: >
+      The failure is an import error, a missing or incompatible dependency, or
+      a problem with the environment rather than the test logic.
+
+  - name: determinism
+    kind: score
+    prompt: >
+      How deterministic does this failure look? A deterministic failure would
+      recur on every run of the same commit; a nondeterministic one would not.
+    levels:
+      - fully nondeterministic, would often pass on rerun
+      - mostly nondeterministic
+      - unclear
+      - mostly deterministic
+      - fully deterministic, would recur on every run

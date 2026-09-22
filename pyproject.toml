@@ -16,7 +16,7 @@ bench = ["numpy>=1.26", "scipy>=1.11"]
 isflaky-mine = "isflaky.mine.__main__:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "types-PyYAML>=6.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -24,6 +24,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/isflaky"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/isflaky/engine/questions" = "isflaky/engine/questions"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

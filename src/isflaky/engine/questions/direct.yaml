@@ -1,0 +1,8 @@
+# One judgment call. Benchmarked against atomic.yaml; the winner ships.
+name: direct
+questions:
+  - name: flaky
+    kind: noul
+    prompt: >
+      This test failure is flaky: rerunning the same commit with no code
+      change would make it pass.
