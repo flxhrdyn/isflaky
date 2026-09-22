@@ -49,3 +49,8 @@ class Verdict:
     reason: str
     # Separate from label: an uncertain FLAKY must never read as safe to rerun.
     escalated: bool
+
+    @property
+    def safe_to_rerun(self) -> bool:
+        """Spec 7.3: the one phrase the tool may not say when it does not know."""
+        return self.label is Label.FLAKY and not self.escalated
