@@ -16,8 +16,18 @@ from isflaky.bench.metrics import (
     evaluate,
     expected_calibration_error,
     precision_recall,
+    predict,
 )
 from isflaky.core.models import Label
+
+# The gate owns the threshold in production; these synthetic models have no
+# gate, so the tests state the one they are scored at.
+THRESHOLD = 0.5
+
+
+def graded(scores):
+    """Pair scores with the labels a gate at THRESHOLD would return."""
+    return (TRUTH, predict(scores, THRESHOLD), scores)
 
 TRUTH = [Label.FLAKY if index % 3 else Label.REAL for index in range(300)]
 
@@ -59,16 +69,17 @@ def well_calibrated() -> list[float]:
 
 
 def test_a_perfect_model_scores_one():
-    assert evaluate(TRUTH, perfect()).accuracy == pytest.approx(1.0)
+    assert evaluate(*graded(perfect())).accuracy == pytest.approx(1.0)
 
 
 def test_a_perfect_model_has_no_calibration_error():
-    assert expected_calibration_error(TRUTH, perfect()) == pytest.approx(0.0)
-    assert brier(TRUTH, perfect()) == pytest.approx(0.0)
+    scores = perfect()
+    assert expected_calibration_error(*graded(scores)) == pytest.approx(0.0)
+    assert brier(TRUTH, scores) == pytest.approx(0.0)
 
 
 def test_a_coin_flip_model_scores_about_one_half():
-    assert evaluate(TRUTH, coin_flip()).accuracy == pytest.approx(0.5, abs=0.1)
+    assert evaluate(*graded(coin_flip())).accuracy == pytest.approx(0.5, abs=0.1)
 
 
 def test_a_coin_flip_model_has_the_worst_brier_score_of_an_honest_model():
@@ -77,23 +88,22 @@ def test_a_coin_flip_model_has_the_worst_brier_score_of_an_honest_model():
 
 
 def test_calibration_catches_the_overconfident_model():
-    assert evaluate(TRUTH, overconfident()).accuracy == pytest.approx(0.75, abs=0.06)
-    assert expected_calibration_error(TRUTH, overconfident()) == pytest.approx(
-        0.25, abs=0.06
-    )
+    scores = overconfident()
+    assert evaluate(*graded(scores)).accuracy == pytest.approx(0.75, abs=0.06)
+    assert expected_calibration_error(*graded(scores)) == pytest.approx(0.25, abs=0.06)
 
 
 def test_the_calibrated_model_wins_on_calibration_at_equal_accuracy():
     """The whole point: equal accuracy, and the metrics still separate them."""
-    loud = evaluate(TRUTH, overconfident())
-    honest = evaluate(TRUTH, well_calibrated())
+    loud = evaluate(*graded(overconfident()))
+    honest = evaluate(*graded(well_calibrated()))
     assert loud.accuracy == pytest.approx(honest.accuracy)
     assert honest.ece < loud.ece
     assert honest.brier < loud.brier
 
 
 def test_per_class_precision_and_recall_are_reported_for_both_labels():
-    scores = precision_recall(TRUTH, perfect())
+    scores = precision_recall(TRUTH, predict(perfect(), THRESHOLD))
     assert set(scores) == {Label.FLAKY, Label.REAL}
     assert all(value == pytest.approx(1.0) for pair in scores.values() for value in pair)
 
@@ -101,41 +111,40 @@ def test_per_class_precision_and_recall_are_reported_for_both_labels():
 def test_recall_falls_when_a_class_is_never_predicted():
     """The majority-class trap: 67% accuracy, zero recall on the minority."""
     always_flaky = [1.0] * len(TRUTH)
-    scores = precision_recall(TRUTH, always_flaky)
+    scores = precision_recall(TRUTH, predict(always_flaky, THRESHOLD))
     assert scores[Label.REAL].recall == pytest.approx(0.0)
     assert scores[Label.FLAKY].recall == pytest.approx(1.0)
 
 
 def test_precision_is_zero_rather_than_undefined_without_predictions():
-    never_flaky = [0.0] * len(TRUTH)
+    never_flaky = predict([0.0] * len(TRUTH), THRESHOLD)
     assert precision_recall(TRUTH, never_flaky)[Label.FLAKY].precision == 0.0
 
 
 def test_a_confidence_interval_brackets_the_point_estimate():
-    low, high = confidence_interval(TRUTH, overconfident(), lambda truth, scores: 1.0)
+    low, high = confidence_interval(lambda truth, scores: 1.0, TRUTH, overconfident())
     assert low <= 1.0 <= high
 
 
 def test_a_wider_interval_comes_from_a_smaller_sample():
     """The dataset is small, so every published number must carry this."""
-    small = (TRUTH[:20], overconfident()[:20])
-    large = (TRUTH, overconfident())
-    narrow = confidence_interval(*large, accuracy)
-    wide = confidence_interval(*small, accuracy)
+    predictions = predict(overconfident(), THRESHOLD)
+    narrow = confidence_interval(accuracy, TRUTH, predictions)
+    wide = confidence_interval(accuracy, TRUTH[:20], predictions[:20])
     assert (wide[1] - wide[0]) > (narrow[1] - narrow[0])
 
 
 def test_the_interval_of_a_perfect_model_is_pinned_to_one():
-    low, high = confidence_interval(TRUTH, perfect(), accuracy)
+    low, high = confidence_interval(accuracy, TRUTH, predict(perfect(), THRESHOLD))
     assert low == pytest.approx(1.0)
     assert high == pytest.approx(1.0)
 
 
 def test_evaluate_reports_the_sample_size():
     """Spec section 18: no number is published without its n."""
-    assert evaluate(TRUTH, perfect()).n == len(TRUTH)
+    assert evaluate(*graded(perfect())).n == len(TRUTH)
 
 
 def test_mismatched_lengths_are_rejected():
     with pytest.raises(ValueError):
-        evaluate(TRUTH, perfect()[:10])
+        evaluate(TRUTH, predict(perfect(), THRESHOLD), perfect()[:10])

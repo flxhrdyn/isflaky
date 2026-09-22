@@ -71,18 +71,39 @@ def decide(
     failure: Failure | None = None,
 ) -> Verdict:
     probability = _combine(answers, questions)
+    label = Label.FLAKY if probability >= thresholds.flaky_threshold else Label.REAL
+    return apply(
+        probability,
+        thresholds,
+        truncated=answers.truncated,
+        cause=_cause(failure),
+        reason=_reason(answers, questions, label),
+    )
+
+
+def apply(
+    probability: float,
+    thresholds: Thresholds,
+    truncated: bool = False,
+    cause: str = "",
+    reason: str = "",
+) -> Verdict:
+    """The policy itself, over a probability that is already combined.
+
+    The threshold sweep re-gates recorded probabilities through this function
+    rather than reimplementing the rule, so a swept operating point and a live
+    decision can never drift apart.
+    """
     # Noul carries no confidence field, so confidence is the decision's distance
     # from the coin flip. Benchmarked against a Score-based variant.
     confidence = min(abs(probability - 0.5) * 2.0, 1.0)
-    label = Label.FLAKY if probability >= thresholds.flaky_threshold else Label.REAL
-    escalated = confidence < thresholds.confidence or answers.truncated
     return Verdict(
-        label=label,
+        label=Label.FLAKY if probability >= thresholds.flaky_threshold else Label.REAL,
         probability=probability,
         confidence=confidence,
-        cause=_cause(failure),
-        reason=_reason(answers, questions, label),
-        escalated=escalated,
+        cause=cause,
+        reason=reason,
+        escalated=confidence < thresholds.confidence or truncated,
     )
 
 

@@ -1,8 +1,12 @@
-"""Accuracy, calibration, and confidence intervals over predicted probabilities.
+"""Accuracy, calibration, and confidence intervals over a model's output.
 
-A score here is P(flaky). Accuracy alone cannot separate a model that is right
-three times in four from one that is right three times in four while claiming
-certainty, so calibration is reported beside it rather than as an extra.
+A score is P(flaky); a prediction is the label the gate actually returned for
+it. The two are passed separately and never re-derived here, because a metric
+that applied its own threshold would report a system nobody ships.
+
+Accuracy alone cannot separate a model that is right three times in four from
+one that is right three times in four while claiming certainty, so calibration
+is reported beside it rather than as an extra.
 """
 
 import random
@@ -12,13 +16,12 @@ from typing import NamedTuple
 
 from isflaky.core.models import Label
 
-_THRESHOLD = 0.5
 _BINS = 10
 _RESAMPLES = 2000
 _LEVEL = 0.95
 _SEED = 0
 
-Metric = Callable[[Sequence[Label], Sequence[float]], float]
+Metric = Callable[..., float]
 
 
 class ClassScores(NamedTuple):
@@ -36,31 +39,39 @@ class Evaluation:
     per_class: Mapping[Label, ClassScores]
 
 
-def evaluate(truth: Sequence[Label], scores: Sequence[float]) -> Evaluation:
+def evaluate(
+    truth: Sequence[Label], predictions: Sequence[Label], scores: Sequence[float]
+) -> Evaluation:
+    _require_same_length(truth, predictions)
     _require_same_length(truth, scores)
     return Evaluation(
         n=len(truth),
-        accuracy=accuracy(truth, scores),
-        ece=expected_calibration_error(truth, scores),
+        accuracy=accuracy(truth, predictions),
+        ece=expected_calibration_error(truth, predictions, scores),
         brier=brier(truth, scores),
-        per_class=precision_recall(truth, scores),
+        per_class=precision_recall(truth, predictions),
     )
 
 
-def accuracy(truth: Sequence[Label], scores: Sequence[float]) -> float:
-    _require_same_length(truth, scores)
+def accuracy(truth: Sequence[Label], predictions: Sequence[Label]) -> float:
+    _require_same_length(truth, predictions)
     if not truth:
         return 0.0
-    hits = sum(1 for label, score in zip(truth, scores) if _predict(score) is label)
-    return hits / len(truth)
+    return sum(1 for label, prediction in zip(truth, predictions) if prediction is label) / len(
+        truth
+    )
 
 
 def precision_recall(
-    truth: Sequence[Label], scores: Sequence[float]
+    truth: Sequence[Label], predictions: Sequence[Label]
 ) -> dict[Label, ClassScores]:
-    _require_same_length(truth, scores)
-    predictions = [_predict(score) for score in scores]
+    _require_same_length(truth, predictions)
     return {label: _scores_for(label, truth, predictions) for label in Label}
+
+
+def predict(scores: Sequence[float], threshold: float) -> list[Label]:
+    """The one place a bare probability becomes a label outside the gate."""
+    return [Label.FLAKY if score >= threshold else Label.REAL for score in scores]
 
 
 def brier(truth: Sequence[Label], scores: Sequence[float]) -> float:
@@ -74,7 +85,10 @@ def brier(truth: Sequence[Label], scores: Sequence[float]) -> float:
 
 
 def expected_calibration_error(
-    truth: Sequence[Label], scores: Sequence[float], bins: int = _BINS
+    truth: Sequence[Label],
+    predictions: Sequence[Label],
+    scores: Sequence[float],
+    bins: int = _BINS,
 ) -> float:
     """Gap between stated confidence and observed accuracy, weighted by bin size.
 
@@ -82,14 +96,13 @@ def expected_calibration_error(
     prediction went, matching how the gate derives it from a Noul answer.
     """
     _require_same_length(truth, scores)
+    _require_same_length(truth, predictions)
     if not truth:
         return 0.0
     buckets: list[list[tuple[float, bool]]] = [[] for _ in range(bins)]
-    for label, score in zip(truth, scores):
+    for label, prediction, score in zip(truth, predictions, scores):
         confidence = max(score, 1.0 - score)
-        buckets[_bucket_of(confidence, bins)].append(
-            (confidence, _predict(score) is label)
-        )
+        buckets[_bucket_of(confidence, bins)].append((confidence, prediction is label))
     error = 0.0
     for bucket in buckets:
         if not bucket:
@@ -101,32 +114,31 @@ def expected_calibration_error(
 
 
 def confidence_interval(
-    truth: Sequence[Label],
-    scores: Sequence[float],
     metric: Metric,
+    *columns: Sequence[object],
     level: float = _LEVEL,
     resamples: int = _RESAMPLES,
     seed: int = _SEED,
 ) -> tuple[float, float]:
-    """Percentile bootstrap interval, seeded so published numbers reproduce."""
-    _require_same_length(truth, scores)
-    if not truth:
+    """Percentile bootstrap interval, seeded so published numbers reproduce.
+
+    Resampling indices rather than each column keeps every column aligned, so
+    a record's truth, prediction, and score are always drawn together.
+    """
+    if not columns or not columns[0]:
         return (0.0, 0.0)
+    for column in columns[1:]:
+        if len(column) != len(columns[0]):
+            raise ValueError("columns of unequal length")
     rng = random.Random(seed)
-    indices = range(len(truth))
+    indices = range(len(columns[0]))
     estimates = []
     for _ in range(resamples):
         drawn = [rng.choice(indices) for _ in indices]
-        estimates.append(
-            metric([truth[i] for i in drawn], [scores[i] for i in drawn])
-        )
+        estimates.append(metric(*([column[i] for i in drawn] for column in columns)))
     estimates.sort()
     tail = (1.0 - level) / 2.0
     return (_percentile(estimates, tail), _percentile(estimates, 1.0 - tail))
-
-
-def _predict(score: float) -> Label:
-    return Label.FLAKY if score >= _THRESHOLD else Label.REAL
 
 
 def _outcome(label: Label) -> float:
@@ -165,6 +177,6 @@ def _percentile(sorted_values: Sequence[float], fraction: float) -> float:
     return sorted_values[low] * (1.0 - weight) + sorted_values[high] * weight
 
 
-def _require_same_length(truth: Sequence[Label], scores: Sequence[float]) -> None:
-    if len(truth) != len(scores):
-        raise ValueError(f"{len(truth)} labels against {len(scores)} scores")
+def _require_same_length(left: Sequence[object], right: Sequence[object]) -> None:
+    if len(left) != len(right):
+        raise ValueError(f"{len(left)} entries against {len(right)}")
