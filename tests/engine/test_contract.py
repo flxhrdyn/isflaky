@@ -4,14 +4,38 @@ Spec section 14 requires this: baselines are free precisely because no
 separate code path exists per model, so they must all satisfy one contract.
 """
 
+import json
+from pathlib import Path
+
+import httpx2
 import pytest
 
 from isflaky.engine.heuristic import HeuristicModel
+from isflaky.engine.jev import JevModel
 from isflaky.engine.protocol import DecisionModel
 from isflaky.engine.questions import load_question_set
 
+FIXTURES = Path(__file__).parent.parent / "fixtures" / "api"
+
+
+def replaying_jev() -> JevModel:
+    """Jev backed by a recorded response, so the contract runs with no key."""
+    recorded = json.loads((FIXTURES / "jev_atomic.json").read_text(encoding="utf-8"))
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        asked = json.loads(request.read())["questions"]
+        answers = {
+            name: recorded["body"]["answers"].get(name, {"type": "noul", "noul": 0.5})
+            for name in asked
+        }
+        return httpx2.Response(200, json={**recorded["body"], "answers": answers})
+
+    return JevModel(api_key="fake", transport=httpx2.MockTransport(handler))
+
+
 MODELS: list[tuple[str, DecisionModel]] = [
     ("heuristic", HeuristicModel()),
+    ("jev", replaying_jev()),
 ]
 
 STATE = {

@@ -1,0 +1,111 @@
+{
+  "url": "https://api.typesafe.ai/v1/systemone",
+  "request": {
+    "state": {
+      "test_id": "tests/test_requests.py::TestRequests::test_pyopenssl_redirect",
+      "error": "requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionAbortedError(10053, 'An established connection was aborted by the software in your host machine', None, 10053, None))",
+      "traceback": "",
+      "log_context": "",
+      "changed_files": ""
+    },
+    "model": "jev-latest",
+    "questions": {
+      "network_error": {
+        "type": "noul",
+        "instructions": "The error mentions a network problem: a timeout, a refused or reset connection, a DNS failure, or an unreachable host.\n"
+      },
+      "timing_dependent": {
+        "type": "noul",
+        "instructions": "The failure depends on timing, sleeping, scheduling, or the order in which operations completed.\n"
+      },
+      "assertion_failure": {
+        "type": "noul",
+        "instructions": "The failure is a deterministic assertion mismatch: a value was compared against an expected value and did not match.\n"
+      },
+      "touches_test_code": {
+        "type": "noul",
+        "instructions": "The change under test modifies the module containing the failing test.\n"
+      },
+      "resource_contention": {
+        "type": "noul",
+        "instructions": "The error mentions contention over a resource: a port already in use, a lock, a file handle, a temporary directory, or exhausted memory.\n"
+      },
+      "external_service": {
+        "type": "noul",
+        "instructions": "The failure involves an external service, a third-party API, or a network dependency outside the test process.\n"
+      },
+      "import_or_env": {
+        "type": "noul",
+        "instructions": "The failure is an import error, a missing or incompatible dependency, or a problem with the environment rather than the test logic.\n"
+      },
+      "determinism": {
+        "type": "score",
+        "instructions": "How deterministic does this failure look? A deterministic failure would recur on every run of the same commit; a nondeterministic one would not.\n",
+        "criteria": [
+          "fully nondeterministic, would often pass on rerun",
+          "mostly nondeterministic",
+          "unclear",
+          "mostly deterministic",
+          "fully deterministic, would recur on every run"
+        ]
+      }
+    }
+  },
+  "status": 200,
+  "body": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "network_error": {
+        "type": "noul",
+        "noul": 0.86
+      },
+      "timing_dependent": {
+        "type": "noul",
+        "noul": 0.46
+      },
+      "assertion_failure": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "touches_test_code": {
+        "type": "noul",
+        "noul": 0.19
+      },
+      "resource_contention": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "external_service": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "import_or_env": {
+        "type": "noul",
+        "noul": 0.71
+      },
+      "determinism": {
+        "type": "score",
+        "score": 0.87,
+        "confidence": 0.55,
+        "legend": {
+          "0": "fully nondeterministic, would often pass on rerun",
+          "1": "mostly nondeterministic",
+          "2": "unclear",
+          "3": "mostly deterministic",
+          "4": "fully deterministic, would recur on every run"
+        },
+        "probabilities": {
+          "0": 0.34,
+          "1": 0.52,
+          "2": 0.08,
+          "3": 0.05,
+          "4": 0.01
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 660,
+      "output_tokens": 150
+    }
+  }
+}
