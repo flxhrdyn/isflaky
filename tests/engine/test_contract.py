@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx2
 import pytest
 
+from isflaky.engine.groq import GroqModel
 from isflaky.engine.heuristic import HeuristicModel
 from isflaky.engine.jev import JevModel
 from isflaky.engine.protocol import DecisionModel
@@ -33,9 +34,31 @@ def replaying_jev() -> JevModel:
     return JevModel(api_key="fake", transport=httpx2.MockTransport(handler))
 
 
+def replaying_groq() -> GroqModel:
+    """Groq answering every asked question, replayed with no key."""
+
+    class Completions:
+        def create(self, **kwargs):
+            asked = kwargs["messages"][-1]["content"]
+            recorded = json.loads(
+                (FIXTURES / "groq_atomic.json").read_text(encoding="utf-8")
+            )["content"]
+            answers = {
+                name: value
+                for name, value in json.loads(recorded).items()
+                if f"- {name}:" in asked
+            }
+            message = type("Message", (), {"content": json.dumps(answers)})()
+            return type("Response", (), {"choices": [type("C", (), {"message": message})()]})()
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": Completions()})()})()
+    return GroqModel(api_key="fake", client=client)
+
+
 MODELS: list[tuple[str, DecisionModel]] = [
     ("heuristic", HeuristicModel()),
     ("jev", replaying_jev()),
+    ("groq", replaying_groq()),
 ]
 
 STATE = {

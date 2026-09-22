@@ -1,0 +1,4 @@
+{
+  "model": "qwen/qwen3.8-27b",
+  "content": "{\n\"network_error\": 0.95,\n\"timing_dependent\": 0.1,\n\"assertion_failure\": 0.0,\n\"touches_test_code\": 0.0,\n\"resource_contention\": 0.05,\n\"external_service\": 0.85,\n\"import_or_env\": 0.05,\n\"determinism\": 0.3\n}"
+}
