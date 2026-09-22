@@ -79,8 +79,8 @@ def main() -> int:
 
     fit, holdout = split(rows)
     print(
-        f"\nsplit: fit={len(set(r.test_id for r in fit))} records, "
-        f"holdout={len(set(r.test_id for r in holdout))} records, "
+        f"\nsplit: fit={len({r.test_id for r in fit})} records, "
+        f"holdout={len({r.test_id for r in holdout})} records, "
         f"cost_ratio={args.cost_ratio}\n"
     )
     for question_set in sorted({row.question_set for row in rows}):
