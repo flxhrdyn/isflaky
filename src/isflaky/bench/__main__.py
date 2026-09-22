@@ -8,6 +8,7 @@ and reporting cost no further API calls.
 import argparse
 import json
 import os
+import sys
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -77,10 +78,16 @@ def main() -> int:
         _write(args.out, rows)
         print(f"wrote {len(rows)} rows to {args.out}")
 
-    fit, holdout = split(rows)
+    try:
+        fit, holdout = split(rows)
+    except ValueError as refused:
+        print(f"\nno numbers reported: {refused}", file=sys.stderr)
+        return 1
     print(
-        f"\nsplit: fit={len({r.test_id for r in fit})} records, "
-        f"holdout={len({r.test_id for r in holdout})} records, "
+        f"\nsplit: fit={len({r.run_id for r in fit})} runs / "
+        f"{len({r.test_id for r in fit})} records, "
+        f"holdout={len({r.run_id for r in holdout})} runs / "
+        f"{len({r.test_id for r in holdout})} records, "
         f"cost_ratio={args.cost_ratio}\n"
     )
     for question_set in sorted({row.question_set for row in rows}):

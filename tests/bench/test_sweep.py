@@ -144,3 +144,27 @@ def _cost(rows, thresholds: Thresholds, cost_ratio: float) -> float:
     from isflaky.bench.sweep import expected_cost
 
     return expected_cost(regate(rows, thresholds), cost_ratio)
+
+
+def test_a_class_trapped_in_one_run_is_refused_rather_than_reported():
+    """One broken commit is one event, not 180 independent observations."""
+    giant = [row("m", f"g{i}", Label.REAL, 0.3, run_id=1) for i in range(180)]
+    tail = [row("m", f"t{i}", Label.FLAKY, 0.8, run_id=10 + i) for i in range(6)]
+    with pytest.raises(ValueError, match="single CI run"):
+        split(giant + tail)
+
+
+def test_both_sides_hold_both_labels_when_each_class_spans_runs():
+    rows = [
+        row("m", f"r{i}", Label.REAL, 0.3, run_id=1 + i % 3) for i in range(60)
+    ] + [row("m", f"f{i}", Label.FLAKY, 0.8, run_id=10 + i % 4) for i in range(20)]
+    fit, holdout = split(rows)
+    for side in (fit, holdout):
+        assert {item.truth for item in side} == {Label.FLAKY, Label.REAL}
+
+
+def test_the_dominant_run_does_not_straddle_the_split():
+    giant = [row("m", f"g{i}", Label.REAL, 0.3, run_id=1 + i % 2) for i in range(180)]
+    tail = [row("m", f"t{i}", Label.FLAKY, 0.8, run_id=10 + i) for i in range(6)]
+    fit, holdout = split(giant + tail)
+    assert not {r.run_id for r in fit} & {r.run_id for r in holdout}

@@ -33,15 +33,99 @@ def split(
     Grouping by run rather than by test is what keeps the holdout honest: one
     broken fixture fails dozens of tests in the same run, and splitting those
     across the two sides would let the fitted threshold see its own answers.
+
+    Runs differ enormously in size - a single run can hold most of the dataset -
+    so they are packed largest first onto whichever side is furthest below its
+    share, and the result is rejected if either side ends up without both
+    labels. A fit split holding one class cannot fit a threshold at all.
     """
-    identities = sorted({row.run_id for row in rows})
-    random.Random(seed).shuffle(identities)
-    cut = max(1, min(len(identities) - 1, round(len(identities) * (1.0 - holdout))))
-    fit_side = set(identities[:cut])
-    return (
-        [row for row in rows if row.run_id in fit_side],
-        [row for row in rows if row.run_id not in fit_side],
+    runs = _runs(rows)
+    if len(runs) < 2:
+        return (list(rows), [])
+
+    order = sorted(runs, key=lambda run: len(runs[run]), reverse=True)
+    random.Random(seed).shuffle(order)
+    order.sort(key=lambda run: len(runs[run]), reverse=True)
+
+    target = len(rows) * (1.0 - holdout)
+    fit_runs: set[int] = set()
+    packed = 0
+    for run in order:
+        if packed < target:
+            fit_runs.add(run)
+            packed += len(runs[run])
+
+    _repair(runs, fit_runs)
+    fit = [row for row in rows if row.run_id in fit_runs]
+    holdout_rows = [row for row in rows if row.run_id not in fit_runs]
+    _reject_single_class(fit, holdout_rows, runs)
+    return (fit, holdout_rows)
+
+
+def _reject_single_class(
+    fit: Sequence[Row], holdout: Sequence[Row], runs: dict[int, list[Row]]
+) -> None:
+    """Refuse a split that cannot measure both classes.
+
+    When every record of a label comes from one CI run, no run-level split can
+    put that label on both sides, and the run is one event rather than many
+    observations. Reporting a number from it would describe a single broken
+    commit, so the benchmark stops here instead.
+    """
+    if {row.truth for row in fit} == {row.truth for row in holdout} == set(Label):
+        return
+    origins = {
+        label: {run for run, group in runs.items() if any(r.truth is label for r in group)}
+        for label in Label
+    }
+    trapped = [label.value for label, where in origins.items() if len(where) < 2]
+    raise ValueError(
+        "cannot split: "
+        + (
+            f"every {', '.join(trapped)} record comes from a single CI run"
+            if trapped
+            else "one side would hold a single class"
+        )
     )
+
+
+def _runs(rows: Sequence[Row]) -> dict[int, list[Row]]:
+    grouped: dict[int, list[Row]] = {}
+    for row in rows:
+        grouped.setdefault(row.run_id, []).append(row)
+    return grouped
+
+
+def _repair(runs: dict[int, list[Row]], fit_runs: set[int]) -> None:
+    """Move the smallest run that supplies a label the side is missing.
+
+    A fit side holding one class cannot fit a threshold, and a holdout side
+    holding one class cannot measure recall on the other. Packing by size alone
+    produces both often enough on a dataset this concentrated.
+    """
+    for label in Label:
+        _ensure(runs, fit_runs, label, into_fit=True)
+        _ensure(runs, fit_runs, label, into_fit=False)
+
+
+def _ensure(
+    runs: dict[int, list[Row]], fit_runs: set[int], label: Label, into_fit: bool
+) -> None:
+    side = {run for run in runs if (run in fit_runs) == into_fit}
+    other = set(runs) - side
+    if any(row.truth is label for run in side for row in runs[run]):
+        return
+    donors = [
+        run
+        for run in other
+        if any(row.truth is label for row in runs[run])
+        # Never empty the other side to fill this one.
+        and len(other) > 1
+    ]
+    if not donors:
+        return
+    smallest = min(donors, key=lambda run: len(runs[run]))
+    fit_runs.add(smallest) if into_fit else fit_runs.discard(smallest)
 
 
 def sweep(rows: Sequence[Row], cost_ratio: float) -> Operating:
