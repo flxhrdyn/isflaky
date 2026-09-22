@@ -21,6 +21,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="isflaky-mine")
     parser.add_argument("repos", nargs="+", help="owner/name")
     parser.add_argument("--out", type=Path, default=Path("data/dataset.jsonl"))
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="ignore the checkpoints and re-mine every run, for a parser change",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("GITHUB_TOKEN")
@@ -28,9 +33,9 @@ def main() -> int:
         print("GITHUB_TOKEN is not set", file=sys.stderr)
         return 2
 
-    existing = read_dataset(args.out) if args.out.exists() else []
+    existing = [] if args.fresh else (read_dataset(args.out) if args.out.exists() else [])
     seen_path = args.out.with_name("seen_runs.json")
-    seen = read_seen_runs(seen_path)
+    seen = {} if args.fresh else read_seen_runs(seen_path)
 
     client = GitHubClient(token=token)
     total = 0
