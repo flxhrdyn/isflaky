@@ -25,7 +25,11 @@ def record(test_id: str, label: Label) -> LabeledFailure:
         ),
         label=label,
         provenance=Provenance(
-            repo="owner/repo", run_id=1, attempt=1, head_sha="abc", url=""
+            repo="owner/repo",
+            run_id=abs(hash(test_id)) % 1000,
+            attempt=1,
+            head_sha="abc",
+            url="",
         ),
     )
 
@@ -75,6 +79,12 @@ def test_one_row_per_record_per_model():
     assert len(rows) == len(DATASET) * 2
     assert {row.model for row in rows} == {"high", "low"}
     assert len([row for row in rows if row.model == "high"]) == len(DATASET)
+
+
+def test_every_row_carries_the_run_it_came_from():
+    """The split groups by run, so the row must remember which one it was."""
+    rows = run(DATASET, {"m": Fixed(0.9)}, DIRECT, Thresholds())
+    assert [r.run_id for r in rows] == [item.provenance.run_id for item in DATASET]
 
 
 def test_every_row_carries_the_ground_truth_label():

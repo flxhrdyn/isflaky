@@ -28,14 +28,19 @@ class Operating:
 def split(
     rows: Sequence[Row], holdout: float = _HOLDOUT, seed: int = _SEED
 ) -> tuple[list[Row], list[Row]]:
-    """Partition by record, never by row, so every model sees the same split."""
-    identities = sorted({row.test_id for row in rows})
+    """Partition by CI run, never by row, so every model sees the same split.
+
+    Grouping by run rather than by test is what keeps the holdout honest: one
+    broken fixture fails dozens of tests in the same run, and splitting those
+    across the two sides would let the fitted threshold see its own answers.
+    """
+    identities = sorted({row.run_id for row in rows})
     random.Random(seed).shuffle(identities)
     cut = max(1, min(len(identities) - 1, round(len(identities) * (1.0 - holdout))))
     fit_side = set(identities[:cut])
     return (
-        [row for row in rows if row.test_id in fit_side],
-        [row for row in rows if row.test_id not in fit_side],
+        [row for row in rows if row.run_id in fit_side],
+        [row for row in rows if row.run_id not in fit_side],
     )
 
 

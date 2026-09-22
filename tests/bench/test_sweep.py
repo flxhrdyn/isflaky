@@ -13,12 +13,15 @@ from isflaky.core.models import Label
 from isflaky.gate.policy import Thresholds
 
 
-def row(model: str, test_id: str, truth: Label, probability: float) -> Row:
+def row(
+    model: str, test_id: str, truth: Label, probability: float, run_id: int = 0
+) -> Row:
     return Row(
         model=model,
         question_set="direct",
         test_id=test_id,
         repo="owner/repo",
+        run_id=run_id if run_id else abs(hash(test_id)) % 1000,
         truth=truth,
         predicted=Label.REAL,
         probability=probability,
@@ -31,8 +34,14 @@ def row(model: str, test_id: str, truth: Label, probability: float) -> Row:
 
 def dataset(model: str = "m") -> list[Row]:
     """Twelve records whose probability tracks the truth with some overlap."""
-    flaky = [row(model, f"flaky{i}", Label.FLAKY, 0.5 + i * 0.05) for i in range(8)]
-    real = [row(model, f"real{i}", Label.REAL, 0.35 + i * 0.1) for i in range(4)]
+    flaky = [
+        row(model, f"flaky{i}", Label.FLAKY, 0.5 + i * 0.05, run_id=100 + i)
+        for i in range(8)
+    ]
+    real = [
+        row(model, f"real{i}", Label.REAL, 0.35 + i * 0.1, run_id=200 + i)
+        for i in range(4)
+    ]
     return flaky + real
 
 
@@ -40,6 +49,16 @@ def test_the_split_covers_every_row_exactly_once():
     fit, holdout = split(dataset())
     assert len(fit) + len(holdout) == len(dataset())
     assert not {r.test_id for r in fit} & {r.test_id for r in holdout}
+
+
+def test_one_run_never_straddles_the_split():
+    """A broken fixture fails many tests in one run; they must stay together."""
+    rows = [
+        row("m", f"t{i}", Label.FLAKY if i % 2 else Label.REAL, 0.4 + i * 0.05, run_id=i // 3)
+        for i in range(12)
+    ]
+    fit, holdout = split(rows)
+    assert not {r.run_id for r in fit} & {r.run_id for r in holdout}
 
 
 def test_both_sides_of_the_split_are_non_empty():
@@ -78,10 +97,10 @@ def test_the_fitted_threshold_beats_the_default_on_the_fit_split():
 
 def test_a_separable_dataset_is_fitted_perfectly():
     clean = [
-        row("m", "f1", Label.FLAKY, 0.9),
-        row("m", "f2", Label.FLAKY, 0.8),
-        row("m", "r1", Label.REAL, 0.2),
-        row("m", "r2", Label.REAL, 0.1),
+        row("m", "f1", Label.FLAKY, 0.9, run_id=1),
+        row("m", "f2", Label.FLAKY, 0.8, run_id=2),
+        row("m", "r1", Label.REAL, 0.2, run_id=3),
+        row("m", "r2", Label.REAL, 0.1, run_id=4),
     ]
     assert sweep(clean, cost_ratio=4.0).expected_cost == pytest.approx(0.0)
 
@@ -107,6 +126,7 @@ def test_regate_leaves_a_failed_call_escalated():
         question_set="direct",
         test_id="t",
         repo="owner/repo",
+        run_id=1,
         truth=Label.FLAKY,
         predicted=Label.REAL,
         probability=0.5,

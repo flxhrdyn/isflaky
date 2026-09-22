@@ -25,6 +25,8 @@ class Row:
     question_set: str
     test_id: str
     repo: str
+    # Failures from one run share a cause, so the split must group by it.
+    run_id: int
     truth: Label
     predicted: Label
     probability: float
@@ -120,6 +122,7 @@ def _row(
         question_set=questions.name,
         test_id=item.failure.test_id,
         repo=item.provenance.repo,
+        run_id=item.provenance.run_id,
         truth=item.label,
         predicted=verdict.label,
         probability=verdict.probability,
@@ -139,6 +142,7 @@ def _failed_row(
         question_set=questions.name,
         test_id=item.failure.test_id,
         repo=item.provenance.repo,
+        run_id=item.provenance.run_id,
         truth=item.label,
         predicted=Label.REAL,
         probability=_NO_EVIDENCE,
