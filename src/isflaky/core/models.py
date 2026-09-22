@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
@@ -30,3 +31,21 @@ class LabeledFailure:
     failure: Failure
     label: Label
     provenance: Provenance
+
+
+@dataclass(frozen=True)
+class Answers:
+    values: Mapping[str, float]
+    latency_ms: float
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class Verdict:
+    label: Label
+    probability: float
+    confidence: float
+    cause: str
+    reason: str
+    # Separate from label: an uncertain FLAKY must never read as safe to rerun.
+    escalated: bool
